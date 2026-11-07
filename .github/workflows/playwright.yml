@@ -181,8 +181,12 @@ jobs:
           retention-days: 14
 
   playwright-l2:
-    name: Playwright L2 (ubuntu)
+    name: Playwright L2 (ubuntu) #${{ matrix.attempt }}
     runs-on: [self-hosted, ubuntu-high-cpu]
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
 
@@ -342,7 +346,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-l2-results
+          name: playwright-l2-results-${{ matrix.attempt }}
           path: |
             playwright/test-results-l2/
             playwright/playwright-l2-report/
