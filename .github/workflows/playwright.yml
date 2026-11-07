@@ -24,8 +24,12 @@ env:
 
 jobs:
   playwright-common:
-    name: Playwright (ubuntu)
+    name: Playwright (ubuntu) #${{ matrix.attempt }}
     runs-on: [self-hosted, ubuntu-high-cpu]
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
 
@@ -144,22 +148,33 @@ jobs:
             fi
           done
 
+      - name: Start node hang watcher (debug)
+        run: |
+          sudo apt-get install -y gdb
+          nohup playwright/scripts/node-hang-watch.sh "$RUNNER_TEMP/node-watch" >/dev/null 2>&1 &
+
       - name: Run Playwright tests
         working-directory: playwright
         env:
           SKIP_BUILD: '1'
-        run: xvfb-run --auto-servernum pnpm exec playwright test
+        run: >-
+          xvfb-run --auto-servernum pnpm exec playwright test
+          tests/01-wallet-integrity.spec.ts tests/02-mining-flow.spec.ts tests/04-send-flow.spec.ts
+
+      - name: Collect node logs (debug)
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/node-watch"
+          cp -r ~/.local/share/com.tari.universe.test/logs "$RUNNER_TEMP/node-watch/app-logs" || true
 
       - name: Upload test results
-        # Upload on success too — the HTML report + timing data is how we
-        # measure flakiness trends, not just post-mortem failures.
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.attempt }}
           path: |
             playwright/test-results/
-            playwright/playwright-report/
+            ${{ runner.temp }}/node-watch/
           retention-days: 14
 
   playwright-l2:
