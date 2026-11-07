@@ -243,22 +243,26 @@ async fn start_remote_ui(handle: &AppHandle) {
     info!(target: LOG_TARGET_APP_LOGIC, "Remote UI available at http://localhost:9515");
 
     // Forward every backend event over the WebSocket and record replayable
-    // ones in the cache so they can be re-sent to late-joining clients.
-    let forward_handle = handle.clone();
+    // ones in the cache so they can be re-sent to late-joining clients. One
+    // task drains the events in emit order: a task per event could cache (and
+    // forward) a quick stopped-then-running pair the wrong way round.
+    let (events_tx, mut events_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     handle.listen("backend_state_update", move |event| {
-        let fwd = forward_handle.clone();
-        let payload_str = event.payload().to_string();
-        tauri::async_runtime::spawn(async move {
+        events_tx.send(event.payload().to_string()).ok();
+    });
+    let forward_handle = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(payload_str) = events_rx.recv().await {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&payload_str) else {
-                return;
+                continue;
             };
             if let Some(key) = replay_cache_key(&value) {
                 REPLAY_CACHE.write().await.insert(key, value.clone());
             }
-            let remote_ui_state = fwd.state::<Arc<RwLock<tauri_remote_ui::RemoteUi>>>();
+            let remote_ui_state = forward_handle.state::<Arc<RwLock<tauri_remote_ui::RemoteUi>>>();
             let remote_ui = remote_ui_state.read().await;
             remote_ui.emit("backend_state_update", value).ok();
-        });
+        }
     });
 
     // When a WebSocket client connects, replay the current state snapshot.
