@@ -138,13 +138,16 @@ fn spawn_child(binary: &str, args: &[String], network: &str) -> Result<Child, st
     }
 }
 
-/// Have the kernel SIGTERM the child when the wrapper dies, even by SIGKILL,
+/// Have the kernel SIGKILL the child when the wrapper dies, even by SIGKILL,
 /// which the wrapper cannot handle. Without it a killed wrapper leaves its
 /// child running where the app can no longer find or stop it: the PID file
-/// names the wrapper. Runs in the forked child before exec.
+/// names the wrapper. SIGKILL, not SIGTERM: the graceful path is the wrapper's
+/// own SIGTERM-then-SIGKILL, and if the wrapper is gone (e.g. the app killed it
+/// mid-shutdown) a child stuck on SIGTERM would survive a second one.
+/// Runs in the forked child before exec.
 #[cfg(target_os = "linux")]
 fn die_with_wrapper(wrapper_pid: libc::pid_t) -> std::io::Result<()> {
-    if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) } == -1 {
+    if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) } == -1 {
         return Err(std::io::Error::last_os_error());
     }
     // The wrapper may have died before the signal was armed.
@@ -298,6 +301,6 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(50));
         };
-        assert_eq!(status.signal(), Some(libc::SIGTERM));
+        assert_eq!(status.signal(), Some(libc::SIGKILL));
     }
 }
