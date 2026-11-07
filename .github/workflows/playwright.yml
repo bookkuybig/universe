@@ -156,9 +156,7 @@ jobs:
         working-directory: playwright
         env:
           SKIP_BUILD: '1'
-        run: >-
-          xvfb-run --auto-servernum pnpm exec playwright test
-          tests/01-wallet-integrity.spec.ts tests/02-mining-flow.spec.ts tests/04-send-flow.spec.ts
+        run: xvfb-run --auto-servernum pnpm exec playwright test
 
       - name: Collect node logs (debug)
         if: ${{ !cancelled() }}
