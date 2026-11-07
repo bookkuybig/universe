@@ -168,7 +168,9 @@ jobs:
           find ~/.local/share/com.tari.universe.test ~/.cache/com.tari.universe.test -name '*.log*' -printf '%s %p\n' \
             > "$RUNNER_TEMP/node-watch/all-logs.txt" 2>&1 || true
           mkdir -p "$RUNNER_TEMP/node-watch/node-logs"
-          find ~/.local/share/com.tari.universe.test/node -name '*.log*' -exec cp --parents {} "$RUNNER_TEMP/node-watch/node-logs" \; || true
+          # Flat copies: upload-artifact drops paths under hidden dirs such as .local
+          cp ~/.local/share/com.tari.universe.test/node/localnet/log/base_node/*.log* "$RUNNER_TEMP/node-watch/node-logs/" || true
+          cp ~/.local/share/com.tari.universe.test/mmproxy/localnet/log/proxy/proxy.log "$RUNNER_TEMP/node-watch/node-logs/" || true
 
       - name: Upload test results
         if: ${{ !cancelled() }}
