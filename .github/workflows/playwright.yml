@@ -150,7 +150,6 @@ jobs:
 
       - name: Start node hang watcher (debug)
         run: |
-          sudo apt-get install -y gdb
           nohup playwright/scripts/node-hang-watch.sh "$RUNNER_TEMP/node-watch" >/dev/null 2>&1 &
 
       - name: Run Playwright tests
@@ -166,6 +165,10 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/node-watch"
           cp -r ~/.local/share/com.tari.universe.test/logs "$RUNNER_TEMP/node-watch/app-logs" || true
+          find ~/.local/share/com.tari.universe.test ~/.cache/com.tari.universe.test -name '*.log*' -printf '%s %p\n' \
+            > "$RUNNER_TEMP/node-watch/all-logs.txt" 2>&1 || true
+          mkdir -p "$RUNNER_TEMP/node-watch/node-logs"
+          find ~/.local/share/com.tari.universe.test/node -name '*.log*' -exec cp --parents {} "$RUNNER_TEMP/node-watch/node-logs" \; || true
 
       - name: Upload test results
         if: ${{ !cancelled() }}
