@@ -261,7 +261,7 @@ async fn start_remote_ui(handle: &AppHandle) {
             }
             let remote_ui_state = forward_handle.state::<Arc<RwLock<tauri_remote_ui::RemoteUi>>>();
             let remote_ui = remote_ui_state.read().await;
-            remote_ui.emit("backend_state_update", value).ok();
+            remote_ui.emit_ordered("backend_state_update", value).await;
         }
     });
 
