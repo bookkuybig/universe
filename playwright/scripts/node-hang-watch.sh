@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CI-only debug aid: watch the localnet minotari_node and, when its HTTP
-# get_tip_info stops answering, dump every thread's stack with gdb.
+# get_tip_info stops answering, record per-thread state from /proc.
 # Usage: node-hang-watch.sh <out-dir>
 set -u
 out=$1; mkdir -p "$out"
@@ -8,10 +8,11 @@ fails=0; dumps=0; last_pid=""
 log() { echo "$(date -u +%H:%M:%S) $*" >> "$out/watch.log"; }
 
 while sleep 10; do
-  all=$(pgrep -f '[m]inotari_node.*com.tari.universe.test' | tr '\n' ' ')
-  # More than one means runner pods share a PID namespace (cross-job pkill risk).
-  [ "$(echo $all | wc -w)" -gt 1 ] && log "multiple node pids: $all"
-  pid=$(echo $all | cut -d' ' -f1)
+  # The process-wrapper parent also matches the command line; keep the real node.
+  pid=""
+  for p in $(pgrep -f '[m]inotari_node.*com.tari.universe.test'); do
+    [ "$(cat /proc/$p/comm 2>/dev/null)" = minotari_node ] && pid=$p
+  done
   [ -z "$pid" ] && { fails=0; continue; }
   if [ "$pid" != "$last_pid" ]; then log "node pid=$pid"; last_pid=$pid; dumps=0; fails=0; fi
   port=$(tr '\0' '\n' < /proc/$pid/cmdline 2>/dev/null | sed -n 's/.*http_wallet_query_service.port=//p')
@@ -25,8 +26,16 @@ while sleep 10; do
     if [ $fails -ge 3 ] && [ $dumps -lt 2 ]; then
       dumps=$((dumps + 1)); f="$out/stack-$pid-$dumps.txt"
       log "dumping stacks to $f"
-      { cat /proc/$pid/status; echo; top -H -b -n1 -p "$pid" | head -60; echo; } > "$f" 2>&1
-      sudo gdb -p "$pid" -batch -ex 'set pagination off' -ex 'thread apply all bt' >> "$f" 2>&1
+      # No ptrace in the runner container, so record per-thread state instead:
+      # all threads asleep on futexes = lock deadlock; one thread pinned = spin.
+      {
+        uptime; echo
+        top -H -b -n1 -p "$pid" | head -80; echo
+        for t in /proc/$pid/task/*; do
+          printf '%s %s state=%s wchan=%s utime=%s\n' "${t##*/}" "$(cat $t/comm)" \
+            "$(awk '{print $3}' $t/stat)" "$(cat $t/wchan 2>/dev/null)" "$(awk '{print $14}' $t/stat)"
+        done
+      } > "$f" 2>&1
       sleep 50  # second dump ~60s later shows which threads never moved
     fi
   fi
