@@ -109,6 +109,9 @@ fn replay_cache_key(event: &serde_json::Value) -> Option<String> {
         // PIN is set, or frontend-gated flows (e.g. MCP token reveal) skip
         // their PIN prompt. Replaying the last value is correct.
         | "PinLocked"
+        // MCP server running/port. Without it a page that loads after the
+        // server (re)starts, e.g. right after a port change, shows "Stopped".
+        | "McpServerStatusUpdate"
         | "CloseSplashscreen" => event_type.to_string(),
         // Periodic metric streams (CpuMiningUpdate, GpuMiningUpdate,
         // pool stats) are intentionally NOT replayed: their emitters stop
@@ -269,4 +272,25 @@ async fn start_remote_ui(handle: &AppHandle) {
             replay_state_snapshot(&handle).await;
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::replay_cache_key;
+    use serde_json::json;
+
+    #[test]
+    fn mcp_server_status_is_replayed_last_one_wins() {
+        let event = json!({"event_type": "McpServerStatusUpdate", "payload": {"running": true, "port": 19223}});
+        assert_eq!(
+            replay_cache_key(&event).as_deref(),
+            Some("McpServerStatusUpdate")
+        );
+    }
+
+    #[test]
+    fn transient_events_are_not_replayed() {
+        let event = json!({"event_type": "ShowReleaseNotes", "payload": null});
+        assert_eq!(replay_cache_key(&event), None);
+    }
 }
